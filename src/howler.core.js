@@ -44,7 +44,7 @@
       // Public properties.
       self.masterGain = null;
       self.noAudio = false;
-      self.usingWebAudio = true;
+      self.usingWebAudio = false;
       self.autoSuspend = true;
       self.ctx = null;
 
@@ -184,7 +184,7 @@
       var self = this || Howler;
 
       // Keeps track of the suspend/resume state of the AudioContext.
-      self.state = self.ctx ? self.ctx.state || 'running' : 'running';
+      self.state = ( self.usingWebAudio && self.ctx ) ? self.ctx.state || 'running' : 'running';
 
       // Automatically begin the 30-second suspend process
       self._autoSuspend();
@@ -281,7 +281,7 @@
       // Only run this on mobile devices if audio isn't already eanbled.
       var isMobile = /iPhone|iPad|iPod|Android|BlackBerry|BB10|Silk|Mobi/i.test(self._navigator && self._navigator.userAgent);
       var isTouch = !!(('ontouchend' in window) || (self._navigator && self._navigator.maxTouchPoints > 0) || (self._navigator && self._navigator.msMaxTouchPoints > 0));
-      if (self._mobileEnabled || !self.ctx || (!isMobile && !isTouch)) {
+      if (self._mobileEnabled || !self.usingWebAudio || (!isMobile && !isTouch)) {
         return;
       }
 
@@ -352,7 +352,7 @@
     _autoSuspend: function() {
       var self = this;
 
-      if (!self.autoSuspend || !self.ctx || typeof self.ctx.suspend === 'undefined' || !Howler.usingWebAudio) {
+      if (!self.autoSuspend || !self.usingWebAudio || typeof self.ctx.suspend === 'undefined' || !Howler.usingWebAudio) {
         return;
       }
 
@@ -399,7 +399,7 @@
     _autoResume: function() {
       var self = this;
 
-      if (!self.ctx || typeof self.ctx.resume === 'undefined' || !Howler.usingWebAudio) {
+      if (!self.usingWebAudio || typeof self.ctx.resume === 'undefined' || !Howler.usingWebAudio) {
         return;
       }
 
@@ -503,7 +503,7 @@
       self._webAudio = Howler.usingWebAudio && !self._html5;
 
       // Automatically try to enable audio on iOS.
-      if (typeof Howler.ctx !== 'undefined' && Howler.ctx && Howler.mobileAutoEnable) {
+      if (Howler.usingWebAudio && Howler.ctx && Howler.mobileAutoEnable) {
         Howler._enableMobileAudio();
       }
 
@@ -631,23 +631,6 @@
       } else if (typeof sprite === 'undefined') {
         // Use the default sound sprite (plays the full audio length).
         sprite = '__default';
-
-        // Check if there is a single paused sound that isn't ended.
-        // If there is, play that sound. If not, continue as usual.
-        var num = 0;
-        for (var i=0; i<self._sounds.length; i++) {
-          var soundAtI = self._sounds[i];
-          if (soundAtI._paused && !soundAtI._ended) {
-            num++;
-            id = soundAtI._id;
-          }
-        }
-
-        if (num === 1) {
-          sprite = null;
-        } else {
-          id = null;
-        }
       }
 
       // Get the selected node, or get one from the pool.
@@ -758,11 +741,16 @@
         }
       } else {
         // Fire this when the sound is ready to play to begin HTML5 Audio playback.
-        var playHtml5 = function() {
+        var playHtml5 = function(timeout) {
           node.currentTime = seek;
           node.muted = sound._muted || self._muted || Howler._muted || node.muted;
           node.volume = sound._volume * Howler.volume();
           node.playbackRate = sound._rate;
+
+          // Setup the new end timer.
+          if (timeout && timeout !== Infinity) {
+            self._endTimers[sound._id] = setTimeout(self._ended.bind(self, sound), timeout);
+          }
 
           // Mobile browsers will throw an error if this is called without user interaction.
           try {
@@ -773,11 +761,6 @@
               self._emit('playerror', sound._id, 'Playback was unable to start. This is most commonly an issue ' +
                 'on mobile devices where playback was not within a user interaction.');
               return;
-            }
-
-            // Setup the new end timer.
-            if (timeout !== Infinity) {
-              self._endTimers[sound._id] = setTimeout(self._ended.bind(self, sound), timeout);
             }
 
             if (!internal) {
@@ -791,11 +774,11 @@
         // Play immediately if ready, or wait for the 'canplaythrough'e vent.
         var loadedNoReadyState = (window && window.ejecta) || (!node.readyState && Howler._navigator.isCocoonJS);
         if (node.readyState === 4 || loadedNoReadyState) {
-          playHtml5();
+          playHtml5(timeout);
         } else {
           var listener = function() {
             // Begin playback.
-            playHtml5();
+            playHtml5(timeout);
 
             // Clear this listener.
             node.removeEventListener(Howler._canPlayEvent, listener, false);
@@ -1656,8 +1639,9 @@
       var events = self['_on' + event];
 
       // Loop through event store and fire all functions.
-      for (var i=events.length-1; i>=0; i--) {
-        var eventAtId = events[i];
+      var eventsCopy = events.slice();
+      for (var i=eventsCopy.length-1; i>=0; i--) {
+        var eventAtId = eventsCopy[i];
         if (!eventAtId.id || eventAtId.id === id || event === 'load') {
           // If this event was setup with `once`, remove it.
           if (eventAtId.once) {
@@ -1703,14 +1687,6 @@
     _ended: function(sound) {
       var self = this;
       var sprite = sound._sprite;
-
-      // If we are using IE and there was network latency we may be clipping
-      // audio before it completes playing. Lets check the node to make sure it
-      // believes it has completed, before ending the playback.
-      if (!self._webAudio && sound._node && !sound._node.paused) {
-        setTimeout(self._ended.bind(self, sound), 100);
-        return self;
-      }
 
       // Should this sound loop?
       var loop = !!(sound._loop || self._sprite[sprite][2]);
@@ -2188,9 +2164,12 @@
     try {
       if (typeof AudioContext !== 'undefined') {
         Howler.ctx = new AudioContext();
+        Howler.usingWebAudio = true;
       } else if (typeof webkitAudioContext !== 'undefined') {
         Howler.ctx = new webkitAudioContext();
+        Howler.usingWebAudio = true;
       } else {
+        Howler.ctx = "DISABLED";
         Howler.usingWebAudio = false;
       }
     } catch(e) {
