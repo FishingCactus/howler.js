@@ -1639,8 +1639,9 @@
       var events = self['_on' + event];
 
       // Loop through event store and fire all functions.
-      for (var i=events.length-1; i>=0; i--) {
-        var eventAtId = events[i];
+      var eventsCopy = events.slice();
+      for (var i=eventsCopy.length-1; i>=0; i--) {
+        var eventAtId = eventsCopy[i];
         if (!eventAtId.id || eventAtId.id === id || event === 'load') {
           // If this event was setup with `once`, remove it.
           if (eventAtId.once) {
