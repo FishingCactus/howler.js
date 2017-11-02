@@ -631,23 +631,6 @@
       } else if (typeof sprite === 'undefined') {
         // Use the default sound sprite (plays the full audio length).
         sprite = '__default';
-
-        // Check if there is a single paused sound that isn't ended.
-        // If there is, play that sound. If not, continue as usual.
-        var num = 0;
-        for (var i=0; i<self._sounds.length; i++) {
-          var soundAtI = self._sounds[i];
-          if (soundAtI._paused && !soundAtI._ended) {
-            num++;
-            id = soundAtI._id;
-          }
-        }
-
-        if (num === 1) {
-          sprite = null;
-        } else {
-          id = null;
-        }
       }
 
       // Get the selected node, or get one from the pool.
