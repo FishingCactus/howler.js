@@ -44,7 +44,7 @@
       // Public properties.
       self.masterGain = null;
       self.noAudio = false;
-      self.usingWebAudio = true;
+      self.usingWebAudio = false;
       self.autoSuspend = true;
       self.ctx = null;
 
@@ -184,7 +184,7 @@
       var self = this || Howler;
 
       // Keeps track of the suspend/resume state of the AudioContext.
-      self.state = self.ctx ? self.ctx.state || 'running' : 'running';
+      self.state = ( self.usingWebAudio && self.ctx ) ? self.ctx.state || 'running' : 'running';
 
       // Automatically begin the 30-second suspend process
       self._autoSuspend();
@@ -281,7 +281,7 @@
       // Only run this on mobile devices if audio isn't already eanbled.
       var isMobile = /iPhone|iPad|iPod|Android|BlackBerry|BB10|Silk|Mobi/i.test(self._navigator && self._navigator.userAgent);
       var isTouch = !!(('ontouchend' in window) || (self._navigator && self._navigator.maxTouchPoints > 0) || (self._navigator && self._navigator.msMaxTouchPoints > 0));
-      if (self._mobileEnabled || !self.ctx || (!isMobile && !isTouch)) {
+      if (self._mobileEnabled || !self.usingWebAudio || (!isMobile && !isTouch)) {
         return;
       }
 
@@ -352,7 +352,7 @@
     _autoSuspend: function() {
       var self = this;
 
-      if (!self.autoSuspend || !self.ctx || typeof self.ctx.suspend === 'undefined' || !Howler.usingWebAudio) {
+      if (!self.autoSuspend || !self.usingWebAudio || typeof self.ctx.suspend === 'undefined' || !Howler.usingWebAudio) {
         return;
       }
 
@@ -399,7 +399,7 @@
     _autoResume: function() {
       var self = this;
 
-      if (!self.ctx || typeof self.ctx.resume === 'undefined' || !Howler.usingWebAudio) {
+      if (!self.usingWebAudio || typeof self.ctx.resume === 'undefined' || !Howler.usingWebAudio) {
         return;
       }
 
@@ -503,7 +503,7 @@
       self._webAudio = Howler.usingWebAudio && !self._html5;
 
       // Automatically try to enable audio on iOS.
-      if (typeof Howler.ctx !== 'undefined' && Howler.ctx && Howler.mobileAutoEnable) {
+      if (Howler.usingWebAudio && Howler.ctx && Howler.mobileAutoEnable) {
         Howler._enableMobileAudio();
       }
 
@@ -2180,9 +2180,12 @@
     try {
       if (typeof AudioContext !== 'undefined') {
         Howler.ctx = new AudioContext();
+        Howler.usingWebAudio = true;
       } else if (typeof webkitAudioContext !== 'undefined') {
         Howler.ctx = new webkitAudioContext();
+        Howler.usingWebAudio = true;
       } else {
+        Howler.ctx = "DISABLED";
         Howler.usingWebAudio = false;
       }
     } catch(e) {
