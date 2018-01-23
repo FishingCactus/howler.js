@@ -1726,7 +1726,8 @@
 
       // Restart the playback for HTML5 Audio loop.
       if (!self._webAudio && loop) {
-        self.stop(sound._id, true).play(sound._id);
+        sound._node.currentTime = sound._start;
+        self._emit('play', sound._id);
       }
 
       // Restart this timer if on a Web Audio loop.
